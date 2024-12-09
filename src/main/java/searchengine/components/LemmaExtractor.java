@@ -24,4 +24,5 @@ public class LemmaExtractor {
         }
         return lemmaFrequency;
     }
+
 }

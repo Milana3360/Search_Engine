@@ -40,4 +40,5 @@ public class Lemma {
                 "lemma='" + lemma + '\'' +
                 ", frequency=" + frequency + '}';
     }
+
 }

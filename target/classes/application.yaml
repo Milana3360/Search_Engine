@@ -11,6 +11,8 @@ spring:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format-sql: true
     show-sql: true
+server:
+  port: 8080
 
 indexing-settings:
   sites:
@@ -20,6 +22,7 @@ indexing-settings:
       name: Skillbox
     - url: https://www.playback.ru
       name: PlayBack.Ru
+
 
 
 

@@ -3,15 +3,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 import searchengine.config.Lemma;
 import searchengine.config.Site;
 import java.util.List;
 import java.util.Optional;
 
+@Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     List<Lemma> findByLemmaContaining(String lemma);
-
-    List<Lemma> findBySite(Site site);
 
     Optional<Lemma> findByLemmaAndSite(String lemma, Site site);
 

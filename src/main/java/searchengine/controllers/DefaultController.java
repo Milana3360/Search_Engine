@@ -12,6 +12,7 @@ public class DefaultController {
      */
     @RequestMapping("/")
     public String index() {
+        System.out.println("here");
         return "index";
     }
 }

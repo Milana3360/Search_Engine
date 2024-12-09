@@ -1581,7 +1581,7 @@ var API = function(){
                     if ($this.next('.API-error').length) {
                         $this.next('.API-error').remove();
                     }
-    
+
                     var $statistics = $('.Statistics');
                     $statistics.find('.HideBlock').not('.Statistics-example').remove();
                     $('#totalSites').text(result.statistics.total.sites);
@@ -1601,7 +1601,7 @@ var API = function(){
                             case 'INDEXING':
                                 statusClass = 'Statistics-status_pause';
                                 break;
-                            
+
                         }
                         $('select[name="site"]').append('' +
                             '<option value="' + site.url + '">' +
@@ -1625,8 +1625,8 @@ var API = function(){
                                 '</div><div class="Statistics-option"><strong>Lemmas:</strong> ' + site.lemmas +
                                 '</div><div class="Statistics-option Statistics-option_error"><strong>Error:</strong> ' + site.error + '</div>'+
                                 '')
-    
-                        
+
+
                         $statistics.append($blockSiteExample);
                         var $thisHideBlock = $statistics.find('.HideBlock').last();
                         $thisHideBlock.on('click', HideBlock().trigger);
@@ -1660,7 +1660,7 @@ var API = function(){
                             .addClass('btn_check')
                         $('.UpdatePageBlock').hide(0)
                     }
-    
+
                 } else {
                     if ($this.next('.API-error').length) {
                         $this.next('.API-error').text(result.error);

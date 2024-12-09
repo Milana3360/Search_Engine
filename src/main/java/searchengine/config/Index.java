@@ -22,4 +22,5 @@ public class Index {
     private Lemma lemma;
 
     private float ranking;
+
 }

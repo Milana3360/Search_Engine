@@ -16,15 +16,18 @@ public class PageService {
 
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
+    private final SiteCrawlerService siteCrawlerService;
 
-    public PageService(PageRepository pageRepository, SiteRepository siteRepository) {
+    public PageService(PageRepository pageRepository, SiteRepository siteRepository, SiteCrawlerService siteCrawlerService) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
+        this.siteCrawlerService = siteCrawlerService;
     }
 
     @Transactional
     public Page addOrUpdatePage(String url) {
         try {
+
             URL parsedUrl = new URL(url);
             String path = parsedUrl.getPath();
 
@@ -36,6 +39,8 @@ public class PageService {
                 Document document = Jsoup.connect(url).get();
                 String content = document.html();
                 page.setContent(content);
+                siteCrawlerService.indexPage(url, content);
+
                // page.setContent("Обновлённый контент страницы");
                 page.setCode(200);
                 Site site = siteRepository.findById(1)
@@ -56,5 +61,20 @@ public class PageService {
             e.printStackTrace();
         }
         return null;
+    }
+
+    @Transactional
+    public void indexPage(String url) {
+          try {
+            String content = getPageContent(url);
+            System.out.println("Индексация страницы с URL: " + url);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String getPageContent(String pageUrl) throws IOException {
+        Document doc = Jsoup.connect(pageUrl).get();
+        return doc.html();
     }
 }

@@ -24,6 +24,9 @@ public class PageLemma {
 
     private int frequency;
 
+    public PageLemma() {
+    }
+
     public Page getPage() {
         return page;
     }

@@ -5,6 +5,8 @@ import java.util.List;
 @Data
 public class StatisticsResponse {
     private boolean result;
-    private TotalStatistics total;
-    private List<DetailedStatisticsItem> detailed;
+    private StatisticsData statistics;
+    //private TotalStatistics total;
+    //private List<DetailedStatisticsItem> detailed;
+
 }

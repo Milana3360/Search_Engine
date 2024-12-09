@@ -57,4 +57,5 @@ public class Page {
     public void setPath(String path) {
         this.path = path;
     }
+
 }

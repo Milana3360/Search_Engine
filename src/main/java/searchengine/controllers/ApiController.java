@@ -7,13 +7,11 @@ import searchengine.config.Lemma;
 import searchengine.config.Page;
 import searchengine.config.PageRequestDTO;
 import searchengine.dto.statistics.StatisticsResponse;
-import searchengine.services.IndexingService;
-import searchengine.services.PageService;
-import searchengine.services.SearchService;
-import searchengine.services.StatisticsService;
-
-import java.util.ArrayList;
-import java.util.List;
+import searchengine.repositories.PageRepository;
+import searchengine.repositories.SiteRepository;
+import searchengine.services.*;
+import java.io.IOException;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api")
@@ -24,38 +22,56 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
 
+    private final SiteCrawlerService siteCrawlerService;
+
     @Autowired
     private SearchService searchService;
     private final SiteCrawler siteCrawler;
+    private final PageRepository pageRepository;
 
-    public ApiController(IndexingService indexingService, StatisticsService statisticsService, SiteCrawler siteCrawler) {
+
+
+    @Autowired
+    private SiteRepository siteRepository;
+
+    public ApiController(IndexingService indexingService, StatisticsService statisticsService, SiteCrawlerService siteCrawlerService, SearchService searchService, SiteCrawler siteCrawler, SiteRepository siteRepository, PageRepository pageRepository) {
         this.indexingService = indexingService;
         this.statisticsService = statisticsService;
+        this.siteCrawlerService = siteCrawlerService;
+        this.searchService = searchService;
         this.siteCrawler = siteCrawler;
+        this.siteRepository = siteRepository;
+        this.pageRepository = pageRepository;
     }
 
     @GetMapping("/startIndexing")
-    public ResponseEntity<String> startIndexing() {
+    public ResponseEntity<Map<String, Object>> startIndexing() {
         try {
             indexingService.startIndexing();
-            return ResponseEntity.ok("Индексация начата.");
+            Map<String, Object> response = new HashMap<>();
+            response.put("result", true);
+            response.put("error", null);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Ошибка при запуске индексации.");
+            return null;
         }
     }
 
     @GetMapping("/stopIndexing")
-    public ResponseEntity<String> stopIndexing() {
+    public ResponseEntity<Map<String, Object>> stopIndexing() {
         try {
+            Map<String, Object> response = new HashMap<>();
+            response.put("result", true);
+            response.put("error", null);
             siteCrawler.shutdown();
-            return ResponseEntity.ok("Индексация остановлена.");
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Ошибка при остановке индексации.");
+            return null;
         }
     }
 
     @PostMapping("/indexPageLemma")
-    public ResponseEntity<?> indexPage(@RequestBody PageRequestDTO request) {
+    public ResponseEntity<?> indexPage(@RequestBody PageRequestDTO request) throws IOException {
 
         Page page = new Page();
         page.setUrl(request.getUrl());
@@ -83,7 +99,9 @@ public class ApiController {
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> getStatistics() {
-        StatisticsResponse statistics = statisticsService.getStatistics();
-        return ResponseEntity.ok(statistics);
+            StatisticsResponse statistics = statisticsService.getStatistics();
+            System.out.println("Statistics Response: " + statistics);
+            return ResponseEntity.ok(statistics);
     }
+
 }

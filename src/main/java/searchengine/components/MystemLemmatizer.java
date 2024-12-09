@@ -29,7 +29,6 @@ public class MystemLemmatizer {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
         return result.toString();
     }
 }
