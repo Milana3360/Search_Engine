@@ -31,6 +31,7 @@ public class SiteCrawler {
     private final PageLemmaRepository pageLemmaRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private final CrawlRepository crawlRepository;
+    private volatile boolean isStopped = false;
 
     private final Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
 
@@ -49,7 +50,7 @@ public class SiteCrawler {
     @Async
     public void crawlPage(Site site, String url) {
 
-        if (visitedUrls.contains(url)) {
+        if (isStopped() || visitedUrls.contains(url)) {
             return;
         }
         visitedUrls.add(url);
@@ -84,9 +85,14 @@ public class SiteCrawler {
             pageRepository.save(page);
             indexPage(page);
 
+            if (isStopped()) {
+                return;
+            }
+
             Elements links = document.select("a[href]");
             System.out.println("извлекаем дочерние ссылки");
             for (Element link : links) {
+                if (isStopped()) break;
                 String childUrl = link.attr("abs:href");
                 if (isValidUrl(childUrl) && childUrl.startsWith(site.getUrl())) {
                     crawlPage(site, childUrl);
@@ -139,7 +145,13 @@ public class SiteCrawler {
 
         return lemmas;
     }
+
     public void shutdown() {
-        executor.shutdown();
+        isStopped = true;
+        executor.shutdownNow();
+    }
+
+    private boolean isStopped() {
+        return isStopped;
     }
 }

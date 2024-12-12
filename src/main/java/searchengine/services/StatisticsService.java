@@ -60,7 +60,6 @@ public class StatisticsService {
 
     private String cleanUrl(String url) {
         if (url != null) {
-            // Убираем префикс "url: " и ненужные символы
             url = url.replaceAll("[\\{\\}\\\"\\r\\n]", "").trim().replace("url: ", "").replace("www.", "");
         }
         return url != null ? url : "";

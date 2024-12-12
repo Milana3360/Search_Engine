@@ -51,7 +51,6 @@ public class SiteCrawlerController {
                 return newSite;
             });
 
-            // Пытаемся найти страницу по URL
             Page existingPage = pageRepository.searchByUrl(url).orElse(null);
             if (existingPage == null) {
                 existingPage = new Page();
