@@ -33,4 +33,6 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     List<Lemma> findBySiteId(int siteId);
 
 
+
+
 }

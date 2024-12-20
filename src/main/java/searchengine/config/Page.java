@@ -58,4 +58,9 @@ public class Page {
         this.path = path;
     }
 
+    @Override
+    public String toString() {
+        return "Page{id=" + id + ", url='" + url + "', title='" + title + "'}";
+    }
+
 }

@@ -36,6 +36,12 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     boolean existsByUrlAndSite(String url, Site site);
 
+    @Query("SELECT p FROM Page p WHERE p.id IN :pageIds")
+    List<Page> findPagesByIds(@Param("pageIds") List<Integer> pageIds, Pageable pageable);
+
+    @Query("SELECT DISTINCT p.id FROM PageLemma pl JOIN pl.page p WHERE pl.lemma.id IN :lemmaIds")
+    List<Integer> findPageIdsByLemmaIds(@Param("lemmaIds") List<Integer> lemmaIds);
+
 
 
 

@@ -1,20 +1,19 @@
 package searchengine.components;
-
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import searchengine.config.Lemma;
 import searchengine.config.Page;
 import searchengine.config.PageLemma;
 import searchengine.config.Site;
+import searchengine.config.Status;
 import searchengine.repositories.*;
-
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -29,13 +28,16 @@ public class SiteCrawler {
     private final SiteRepository siteRepository;
     private final LemmaRepository lemmaRepository;
     private final PageLemmaRepository pageLemmaRepository;
-    private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private final CrawlRepository crawlRepository;
+
+    private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private volatile boolean isStopped = false;
 
     private final Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
 
-    public SiteCrawler(PageRepository pageRepository, SiteRepository siteRepository,LemmaRepository lemmaRepository,PageLemmaRepository pageLemmaRepository, CrawlRepository crawlRepository ) {
+    public SiteCrawler(PageRepository pageRepository, SiteRepository siteRepository,
+                       LemmaRepository lemmaRepository, PageLemmaRepository pageLemmaRepository,
+                       CrawlRepository crawlRepository) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.lemmaRepository = lemmaRepository;
@@ -44,42 +46,73 @@ public class SiteCrawler {
     }
 
     public void crawlSite(Site site) {
-        crawlPage(site, site.getUrl());  // Запуск индексации для главной страницы
+        try {
+
+            visitedUrls.clear();
+            isStopped = false;
+
+            if (site.getStatus() == Status.INDEXING) {
+                site.setStatus(Status.FAILED);
+                site.setLastError("Индексация была прервана. Перезапуск.");
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+            }
+
+            site.setStatus(Status.INDEXED);
+            site.setStatusTime(LocalDateTime.now());
+            site.setLastError(null);
+            siteRepository.save(site);
+
+            crawlPage(site, site.getUrl());
+
+            if (!isStopped) {
+                site.setStatus(Status.INDEXED);
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+                System.out.println("Индексация завершена для сайта: " + site.getUrl());
+            }
+        } catch (Exception e) {
+            site.setStatus(Status.FAILED);
+            site.setLastError("Ошибка индексации: " + e.getMessage());
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+            System.err.println("Ошибка при индексации сайта: " + site.getUrl() + ". Причина: " + e.getMessage());
+        }
     }
 
-    @Async
-    public void crawlPage(Site site, String url) {
 
-        if (isStopped() || visitedUrls.contains(url)) {
+    public void crawlPage(Site site, String url) {
+        String normalizedUrl = normalizeUrl(url);
+
+        if (isStopped() || visitedUrls.contains(normalizedUrl)) {
             return;
         }
-        visitedUrls.add(url);
+        visitedUrls.add(normalizedUrl);
 
         try {
-            System.out.println("Подключение к URL: " + url);
-            Document document = Jsoup.connect(url).get();
+            System.out.println("Подключение к URL: " + normalizedUrl);
+            Document document = Jsoup.connect(normalizedUrl).get();
             String content = document.html();
+            String title = document.title();
             int statusCode = 200;
 
-            Optional<Page> existingPageOptional = crawlRepository.findByUrl(url);
+            Optional<Page> existingPageOptional = crawlRepository.findByUrl(normalizedUrl);
 
             Page page;
             if (existingPageOptional.isPresent()) {
-                System.out.println("обновляем страницу тк она существует");
                 page = existingPageOptional.get();
                 page.setContent(content);
+                page.setTitle(title);
                 page.setCode(statusCode);
-                page.setTitle("Page Title");
-                page.setPath(url);
+                page.setPath(normalizedUrl);
             } else {
-                System.out.println("создаем новую страницу тк её нет");
                 page = new Page();
-                page.setUrl(url);
+                page.setUrl(normalizedUrl);
                 page.setSite(site);
                 page.setContent(content);
+                page.setTitle(title);
                 page.setCode(statusCode);
-                page.setTitle("Page Title");
-                page.setPath(url);
+                page.setPath(normalizedUrl);
             }
 
             pageRepository.save(page);
@@ -90,7 +123,7 @@ public class SiteCrawler {
             }
 
             Elements links = document.select("a[href]");
-            System.out.println("извлекаем дочерние ссылки");
+            System.out.println("Извлекаем дочерние ссылки");
             for (Element link : links) {
                 if (isStopped()) break;
                 String childUrl = link.attr("abs:href");
@@ -103,14 +136,6 @@ public class SiteCrawler {
         }
     }
 
-    private boolean isValidUrl(String url) {
-        try {
-            new URL(url);
-            return true;
-        } catch (MalformedURLException e) {
-            return false;
-        }
-    }
 
     private void indexPage(Page page) {
         Set<Lemma> lemmas = extractLemmasFromContent(page.getContent(), page.getSite());
@@ -129,16 +154,13 @@ public class SiteCrawler {
 
     private Set<Lemma> extractLemmasFromContent(String content, Site site) {
         Set<Lemma> lemmas = new HashSet<>();
-
         String[] words = content.split("\\s+");
 
         for (String word : words) {
             String lemmaText = word.toLowerCase();
-
             if (lemmaText.length() > 255) {
                 lemmaText = lemmaText.substring(0, 255);
             }
-
             Lemma lemma = new Lemma(lemmaText, site, 1);
             lemmas.add(lemma);
         }
@@ -146,10 +168,41 @@ public class SiteCrawler {
         return lemmas;
     }
 
+    private boolean isValidUrl(String url) {
+        try {
+            new URL(url);
+            return true;
+        } catch (MalformedURLException e) {
+            return false;
+        }
+    }
+
+    private String normalizeUrl(String url) {
+        try {
+            URL parsedUrl = new URL(url);
+            String protocol = parsedUrl.getProtocol();
+            String host = parsedUrl.getHost();
+            String path = parsedUrl.getPath();
+
+            path = (path == null || path.equals("/")) ? "" : path;
+
+            return protocol + "://" + host + path;
+        } catch (MalformedURLException e) {
+            return url;
+        }
+    }
+
     public void shutdown() {
         isStopped = true;
-        executor.shutdownNow();
+
+        if (SpringContext.isShuttingDown()) {
+            System.out.println("Приложение завершает работу. Остановка индексации пропущена.");
+            return;
+        }
+
+        System.out.println("Индексация остановлена.");
     }
+
 
     private boolean isStopped() {
         return isStopped;

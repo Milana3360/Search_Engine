@@ -10,6 +10,8 @@ import searchengine.config.PageResponse;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import javax.transaction.Transactional;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.*;
 import java.util.stream.Collectors;
 @Service
@@ -34,31 +36,77 @@ public class SearchService {
             return Collections.emptyList();
         }
 
+        List<Integer> lemmaIds = foundLemmas.stream()
+                .map(Lemma::getId)
+                .collect(Collectors.toList());
 
-        PageRequest pageRequest = PageRequest.of(page, size);
-        org.springframework.data.domain.Page<Page> pages = pageRepository.findPagesByLemmasIn(foundLemmas, pageRequest);
-        System.out.println(pages);
-        System.out.println("Найденные страницы: " + pages.getContent());
+        List<Integer> pageIds = pageRepository.findPageIdsByLemmaIds(lemmaIds);
+        System.out.println("Найденные page_id: " + pageIds);
 
-        List<PageResponse> responses = new ArrayList<>();
-        for (Page pageItem : pages.getContent()) {
-            PageResponse response = new PageResponse();
-
-            String cleanUrl = pageItem.getUrl().replaceAll("[\"{}]+", "").replaceAll("url:\\s*", "").trim();
-            response.setUrl(cleanUrl);
-
-            String pageTitle = getTitleFromPageContent(pageItem.getContent());
-            response.setTitle(pageTitle);
-
-            response.setSnippet(generateSnippet(pageItem.getContent(), lemmas));
-            response.setRelevance(calculateRelevance(pageItem, foundLemmas));
-
-            responses.add(response);
+        if (pageIds.isEmpty()) {
+            System.out.println("Не найдено страниц для лемм: " + lemmaIds);
+            return Collections.emptyList();
         }
+
+        List<Page> pages = pageRepository.findPagesByIds(pageIds, PageRequest.of(page, size));
+        System.out.println("Найденные страницы: " + pages);
+
+        Set<Page> uniquePages = new HashSet<>(pages);
+
+        List<PageResponse> responses = uniquePages.stream()
+                .map(pageItem -> {
+                    PageResponse response = new PageResponse();
+
+                    String fullUrl = pageItem.getUrl().replaceAll("[\"{}]+", "").replaceAll("url:\\s*", "").trim();
+
+                    try {
+                        URL url = new URL(fullUrl);
+
+                        String site = url.getProtocol() + "://" + url.getHost();
+                        response.setSite(site);
+
+                        String uri = url.getPath();
+                        response.setUri(uri);
+
+                        response.setSiteName(url.getHost());
+                    } catch (MalformedURLException e) {
+                        response.setSite(fullUrl);
+                        response.setUri("/");
+                        response.setSiteName("Unknown");
+                    }
+
+                    String pageTitle = getTitleFromPageContent(pageItem.getContent());
+                    response.setTitle(pageTitle);
+
+                    response.setSnippet(generateSnippet(pageItem.getContent(), lemmas));
+
+                    response.setRelevance(calculateRelevance(pageItem, foundLemmas));
+
+                    return response;
+                })
+                .collect(Collectors.toList());
 
         return responses;
     }
 
+
+    private String normalizeUrl(String url) {
+        try {
+            URL parsedUrl = new URL(url);
+            return parsedUrl.getProtocol() + "://" + parsedUrl.getHost() + parsedUrl.getPath();
+        } catch (MalformedURLException e) {
+            return url;
+        }
+    }
+
+    private String extractSiteName(String url) {
+        try {
+            URL parsedUrl = new URL(url);
+            return parsedUrl.getHost();
+        } catch (MalformedURLException e) {
+            return "Unknown Site";
+        }
+    }
 
     private List<String> extractLemmasFromQuery(String query) {
         String lemmatizedText = MystemLemmatizer.lemmatize(query);
@@ -69,7 +117,6 @@ public class SearchService {
         Set<String> uniqueLemmas = new HashSet<>(Arrays.asList(lemmas));
         return new ArrayList<>(uniqueLemmas);
     }
-
 
     private String getTitleFromPageContent(String content) {
         if (content == null || content.trim().isEmpty()) {

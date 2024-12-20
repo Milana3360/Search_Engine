@@ -6,9 +6,11 @@ import lombok.Setter;
 @Setter
 public class PageResponse {
 
-    private String url;
+    private String uri;
     private String title;
     private String snippet;
     private double relevance;
+    private String site;
+    private String siteName;
 
 }

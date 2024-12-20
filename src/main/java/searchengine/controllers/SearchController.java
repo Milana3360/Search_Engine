@@ -27,7 +27,7 @@ public class SearchController {
 
         Map<String, PageResponse> uniqueResultsMap = new LinkedHashMap<>();
         for (PageResponse response : searchResults) {
-            String normalizedUrl = normalizeUrl(response.getUrl());
+            String normalizedUrl = response.getUri();
             uniqueResultsMap.put(normalizedUrl, response);
         }
 
@@ -45,6 +45,7 @@ public class SearchController {
 
         return ResponseEntity.ok(response);
     }
+
 
     private String normalizeUrl(String url) {
         try {

@@ -23,12 +23,12 @@ public class Site {
     @Column(nullable = false)
     private String name;
 
+    @Column(name = "status_time")
     private LocalDateTime statusTime;
 
     private String lastError;
 
     public void setStatus(Status status) {
-        System.out.println("Setting status to: " + status);
         this.status = status;
     }
 }

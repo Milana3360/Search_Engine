@@ -1,5 +1,4 @@
 package searchengine.services;
-
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -10,9 +9,9 @@ import searchengine.components.MystemLemmatizer;
 import searchengine.components.SiteCrawler;
 import searchengine.config.*;
 import searchengine.repositories.*;
-
 import javax.transaction.Transactional;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -32,22 +31,60 @@ public class IndexingService {
     private final PageService pageService;
     private final PageRepository pageRepository;
     private final CrawlRepository crawlRepository;
+    private final IndexingSettings indexingSettings;
+    private boolean indexingInProgress = false;
+    private Thread indexingThread;
 
     public void startIndexing() {
-        List<Site> sites = siteRepository.findAll();
-        for (Site site : sites) {
-            siteCrawler.crawlSite(site);
+        List<IndexingSettings.SiteInfo> sites = indexingSettings.getSites();
+
+        for (IndexingSettings.SiteInfo siteInfo : sites) {
+
+            String normalizedUrl = normalizeUrl(siteInfo.getUrl());
+            Optional<Site> existingSiteOpt = siteRepository.findByUrl(normalizedUrl);
+
+            if (existingSiteOpt.isEmpty()) {
+                Site site = new Site();
+                site.setUrl(normalizedUrl);
+                site.setName(siteInfo.getName());
+                site.setStatus(Status.INDEXING);
+                site.setStatusTime(LocalDateTime.now());
+
+                siteRepository.save(site);
+
+                siteCrawler.crawlSite(site);
+            } else {
+                Site site = existingSiteOpt.get();
+                site.setStatus(Status.INDEXING);
+                site.setStatusTime(LocalDateTime.now());
+
+                siteRepository.save(site);
+
+                siteCrawler.crawlSite(site);
+            }
         }
     }
+
+    private String normalizeUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+
+        if (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+
+        return url.toLowerCase();
+    }
+
+    public void stopIndexing() {
+        siteCrawler.shutdown();
+    }
+
 
     public void indexSinglePage(String url) throws IOException {
         Page page = pageService.addOrUpdatePage(url);
         indexPage(page);
-    }
-
-
-    public void stopIndexing() {
-        siteCrawler.shutdown();
     }
 
     @Transactional
@@ -141,7 +178,6 @@ public class IndexingService {
             }
         }
     }
+
+
 }
-
-
-
