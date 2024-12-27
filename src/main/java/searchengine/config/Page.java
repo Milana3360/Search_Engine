@@ -24,7 +24,7 @@ public class Page {
     private String content;
 
     @Column(nullable = false, unique = true)
-    private String url;
+    public String url;
 
     @Column(nullable = false)
     private int code;

@@ -13,4 +13,7 @@ public class PageResponse {
     private String site;
     private String siteName;
 
+    public PageResponse() {
+    }
+
 }

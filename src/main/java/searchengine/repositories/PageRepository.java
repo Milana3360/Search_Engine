@@ -36,19 +36,24 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     boolean existsByUrlAndSite(String url, Site site);
 
-    @Query("SELECT p FROM Page p WHERE p.id IN :pageIds")
-    List<Page> findPagesByIds(@Param("pageIds") List<Integer> pageIds, Pageable pageable);
+    Optional<Page> findByUrlAndSite(String url, Site site);
 
-    @Query("SELECT DISTINCT p.id FROM PageLemma pl JOIN pl.page p WHERE pl.lemma.id IN :lemmaIds")
+    @Query("SELECT p FROM Page p WHERE p.content LIKE %:query% OR p.title LIKE %:query%")
+    org.springframework.data.domain.Page<Page> findPagesByQuery(String query, Pageable pageable);
+
+    @Query("SELECT COUNT(p) FROM Page p WHERE p.content LIKE %:query% OR p.title LIKE %:query%")
+    long countPagesByQuery(String query);
+
+
+    @Query("SELECT p FROM Page p WHERE p.id IN :pageIds")
+    List<Page> findPagesByIds(@Param("pageIds") List<Integer> pageIds);
+
+    @Query("SELECT DISTINCT p.id FROM Page p " +
+            "JOIN p.lemmas l WHERE l.id IN :lemmaIds")
     List<Integer> findPageIdsByLemmaIds(@Param("lemmaIds") List<Integer> lemmaIds);
 
-
-
-
-
-
-
-
+    @Query("SELECT p FROM Page p WHERE p.id IN :pageIds")
+    List<Page> findPagesByIdsWithPagination(@Param("pageIds") List<Integer> pageIds, Pageable pageable);
 
 
 }

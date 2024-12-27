@@ -1,11 +1,14 @@
 package searchengine.controllers;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import searchengine.config.PageResponse;
+import searchengine.config.SearchResponse;
 import searchengine.services.SearchService;
 
 import java.net.MalformedURLException;
@@ -19,32 +22,29 @@ public class SearchController {
     @Autowired
     private SearchService searchService;
 
-    @GetMapping("/search")
-    public ResponseEntity<Map<String, Object>> search(@RequestParam String query,
-                                                      @RequestParam int offset,
-                                                      @RequestParam int limit) {
-        List<PageResponse> searchResults = searchService.searchPages(query, offset, limit);
+   @GetMapping("/search")
+        public ResponseEntity<Map<String, Object>> search(@RequestParam String query,
+                                                          @RequestParam int offset,
+                                                          @RequestParam(required = false, defaultValue = "20") int limit) {
 
-        Map<String, PageResponse> uniqueResultsMap = new LinkedHashMap<>();
-        for (PageResponse response : searchResults) {
-            String normalizedUrl = response.getUri();
-            uniqueResultsMap.put(normalizedUrl, response);
+            Pageable pageable = PageRequest.of(offset / limit, limit);
+
+            SearchResponse searchResponse = searchService.searchPagesWithLemmas(query, offset, limit);
+
+            Map<String, Object> response = new HashMap<>();
+
+            if (!searchResponse.isResult()) {
+                response.put("result", false);
+                response.put("error", "No results found for query: " + query);
+            } else {
+                response.put("result", true);
+                response.put("count", searchResponse.getCount());
+                response.put("data", searchResponse.getData());
+            }
+
+            return ResponseEntity.ok(response);
         }
 
-        List<PageResponse> uniqueResults = new ArrayList<>(uniqueResultsMap.values());
-
-        Map<String, Object> response = new HashMap<>();
-        if (uniqueResults.isEmpty()) {
-            response.put("result", false);
-            response.put("error", "No results found for query: " + query);
-        } else {
-            response.put("result", true);
-            response.put("count", uniqueResults.size());
-            response.put("data", uniqueResults);
-        }
-
-        return ResponseEntity.ok(response);
-    }
 
 
     private String normalizeUrl(String url) {
@@ -66,9 +66,4 @@ public class SearchController {
             return url;
         }
     }
-
-
-
-
-
 }

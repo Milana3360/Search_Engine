@@ -32,6 +32,9 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
 
     List<Lemma> findBySiteId(int siteId);
 
+    @Query("SELECT l FROM Lemma l WHERE l.site = :site")
+    List<Lemma> findBySite(@Param("site") Site site);
+
 
 
 

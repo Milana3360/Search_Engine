@@ -10,13 +10,16 @@ import searchengine.config.PageLemma;
 import searchengine.config.Site;
 import searchengine.config.Status;
 import searchengine.repositories.*;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,16 +31,16 @@ public class SiteCrawler {
     private final SiteRepository siteRepository;
     private final LemmaRepository lemmaRepository;
     private final PageLemmaRepository pageLemmaRepository;
-    private final CrawlRepository crawlRepository;
-
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
+    private final CrawlRepository crawlRepository;
     private volatile boolean isStopped = false;
+
+    private static final String LOG_FILE = "logs/indexing_time_log.txt";
 
     private final Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
 
     public SiteCrawler(PageRepository pageRepository, SiteRepository siteRepository,
-                       LemmaRepository lemmaRepository, PageLemmaRepository pageLemmaRepository,
-                       CrawlRepository crawlRepository) {
+                       LemmaRepository lemmaRepository, PageLemmaRepository pageLemmaRepository, CrawlRepository crawlRepository) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.lemmaRepository = lemmaRepository;
@@ -47,7 +50,6 @@ public class SiteCrawler {
 
     public void crawlSite(Site site) {
         try {
-
             visitedUrls.clear();
             isStopped = false;
 
@@ -80,7 +82,6 @@ public class SiteCrawler {
         }
     }
 
-
     public void crawlPage(Site site, String url) {
         String normalizedUrl = normalizeUrl(url);
 
@@ -90,13 +91,15 @@ public class SiteCrawler {
         visitedUrls.add(normalizedUrl);
 
         try {
+            long startTime = System.nanoTime();
+
             System.out.println("Подключение к URL: " + normalizedUrl);
             Document document = Jsoup.connect(normalizedUrl).get();
             String content = document.html();
             String title = document.title();
             int statusCode = 200;
 
-            Optional<Page> existingPageOptional = crawlRepository.findByUrl(normalizedUrl);
+            Optional<Page> existingPageOptional = pageRepository.findByUrlAndSite(normalizedUrl, site);
 
             Page page;
             if (existingPageOptional.isPresent()) {
@@ -116,7 +119,25 @@ public class SiteCrawler {
             }
 
             pageRepository.save(page);
-            indexPage(page);
+            indexPageBatch(page);
+
+            long endTime = System.nanoTime();
+            long durationInNano = endTime - startTime;
+            long durationInSeconds = durationInNano / 1_000_000_000;
+
+            Path logDir = Paths.get("logs");
+            if (Files.notExists(logDir)) {
+                Files.createDirectories(logDir);
+            }
+
+            try (BufferedWriter writer = Files.newBufferedWriter(Paths.get("logs/indexing_time_log.txt"),
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND)) {
+                writer.write("Индексация страницы " + normalizedUrl + " заняла: " + durationInSeconds + " секунд.");
+                writer.newLine();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
             if (isStopped()) {
                 return;
@@ -137,20 +158,26 @@ public class SiteCrawler {
     }
 
 
-    private void indexPage(Page page) {
+    public void indexPageBatch(Page page) {
         Set<Lemma> lemmas = extractLemmasFromContent(page.getContent(), page.getSite());
 
         for (Lemma lemma : lemmas) {
-            Lemma existingLemma = lemmaRepository.findByLemmaAndSite(lemma.getLemma(), page.getSite())
-                    .orElse(new Lemma(lemma.getLemma(), page.getSite(), 0));
+            Optional<Lemma> existingLemmaOptional = lemmaRepository.findByLemmaAndSite(lemma.getLemma(), page.getSite());
 
-            existingLemma.setFrequency(existingLemma.getFrequency() + lemma.getFrequency());
-            lemmaRepository.save(existingLemma);
+            Lemma existingLemma;
+            if (existingLemmaOptional.isPresent()) {
+                existingLemma = existingLemmaOptional.get();
+                existingLemma.setFrequency(existingLemma.getFrequency() + lemma.getFrequency());
+            } else {
+                existingLemma = new Lemma(lemma.getLemma(), page.getSite(), lemma.getFrequency());
+                lemmaRepository.save(existingLemma);
+            }
 
             PageLemma pageLemma = new PageLemma(page, existingLemma);
             pageLemmaRepository.save(pageLemma);
         }
     }
+
 
     private Set<Lemma> extractLemmasFromContent(String content, Site site) {
         Set<Lemma> lemmas = new HashSet<>();
@@ -161,8 +188,7 @@ public class SiteCrawler {
             if (lemmaText.length() > 255) {
                 lemmaText = lemmaText.substring(0, 255);
             }
-            Lemma lemma = new Lemma(lemmaText, site, 1);
-            lemmas.add(lemma);
+            lemmas.add(new Lemma(lemmaText, site, 1));
         }
 
         return lemmas;
@@ -194,17 +220,20 @@ public class SiteCrawler {
 
     public void shutdown() {
         isStopped = true;
-
-        if (SpringContext.isShuttingDown()) {
-            System.out.println("Приложение завершает работу. Остановка индексации пропущена.");
-            return;
-        }
-
+        executor.shutdown();
         System.out.println("Индексация остановлена.");
     }
-
 
     private boolean isStopped() {
         return isStopped;
     }
+
+    public void saveSiteError(Site site, String errorMessage) {
+        if (errorMessage.length() > 255) {
+            errorMessage = errorMessage.substring(0, 255);
+        }
+        site.setLastError(errorMessage);
+        siteRepository.save(site);
+    }
+
 }
