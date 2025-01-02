@@ -52,8 +52,9 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
             "JOIN p.lemmas l WHERE l.id IN :lemmaIds")
     List<Integer> findPageIdsByLemmaIds(@Param("lemmaIds") List<Integer> lemmaIds);
 
-    @Query("SELECT p FROM Page p WHERE p.id IN :pageIds")
+    @Query("select p from Page p where p.id in :pageIds")
     List<Page> findPagesByIdsWithPagination(@Param("pageIds") List<Integer> pageIds, Pageable pageable);
+
 
 
 }

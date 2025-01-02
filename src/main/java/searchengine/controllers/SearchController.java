@@ -3,6 +3,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,7 +24,7 @@ public class SearchController {
     @Autowired
     private SearchService searchService;
 
-   @GetMapping("/search")
+        @GetMapping("/search")
         public ResponseEntity<Map<String, Object>> search(@RequestParam String query,
                                                           @RequestParam int offset,
                                                           @RequestParam(required = false, defaultValue = "20") int limit) {

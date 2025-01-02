@@ -10,6 +10,7 @@ import searchengine.config.PageLemma;
 import searchengine.config.Site;
 import searchengine.config.Status;
 import searchengine.repositories.*;
+import javax.transaction.Transactional;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -24,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import static org.springframework.boot.logging.LoggingSystemProperties.LOG_FILE;
+
 @Component
 public class SiteCrawler {
 
@@ -32,20 +35,16 @@ public class SiteCrawler {
     private final LemmaRepository lemmaRepository;
     private final PageLemmaRepository pageLemmaRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
-    private final CrawlRepository crawlRepository;
     private volatile boolean isStopped = false;
-
-    private static final String LOG_FILE = "logs/indexing_time_log.txt";
 
     private final Set<String> visitedUrls = ConcurrentHashMap.newKeySet();
 
     public SiteCrawler(PageRepository pageRepository, SiteRepository siteRepository,
-                       LemmaRepository lemmaRepository, PageLemmaRepository pageLemmaRepository, CrawlRepository crawlRepository) {
+                       LemmaRepository lemmaRepository, PageLemmaRepository pageLemmaRepository) {
         this.pageRepository = pageRepository;
         this.siteRepository = siteRepository;
         this.lemmaRepository = lemmaRepository;
         this.pageLemmaRepository = pageLemmaRepository;
-        this.crawlRepository = crawlRepository;
     }
 
     public void crawlSite(Site site) {
@@ -53,16 +52,8 @@ public class SiteCrawler {
             visitedUrls.clear();
             isStopped = false;
 
-            if (site.getStatus() == Status.INDEXING) {
-                site.setStatus(Status.FAILED);
-                site.setLastError("Индексация была прервана. Перезапуск.");
-                site.setStatusTime(LocalDateTime.now());
-                siteRepository.save(site);
-            }
-
             site.setStatus(Status.INDEXED);
             site.setStatusTime(LocalDateTime.now());
-            site.setLastError(null);
             siteRepository.save(site);
 
             crawlPage(site, site.getUrl());
@@ -96,7 +87,8 @@ public class SiteCrawler {
             System.out.println("Подключение к URL: " + normalizedUrl);
             Document document = Jsoup.connect(normalizedUrl).get();
             String content = document.html();
-            String title = document.title();
+
+            String title = extractTitle(document);
             int statusCode = 200;
 
             Optional<Page> existingPageOptional = pageRepository.findByUrlAndSite(normalizedUrl, site);
@@ -107,7 +99,7 @@ public class SiteCrawler {
                 page.setContent(content);
                 page.setTitle(title);
                 page.setCode(statusCode);
-                page.setPath(normalizedUrl);
+                page.setPath(getPathFromUrl(normalizedUrl));
             } else {
                 page = new Page();
                 page.setUrl(normalizedUrl);
@@ -115,7 +107,7 @@ public class SiteCrawler {
                 page.setContent(content);
                 page.setTitle(title);
                 page.setCode(statusCode);
-                page.setPath(normalizedUrl);
+                page.setPath(getPathFromUrl(normalizedUrl));
             }
 
             pageRepository.save(page);
@@ -130,7 +122,7 @@ public class SiteCrawler {
                 Files.createDirectories(logDir);
             }
 
-            try (BufferedWriter writer = Files.newBufferedWriter(Paths.get("logs/indexing_time_log.txt"),
+            try (BufferedWriter writer = Files.newBufferedWriter(Paths.get(LOG_FILE),
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND)) {
                 writer.write("Индексация страницы " + normalizedUrl + " заняла: " + durationInSeconds + " секунд.");
@@ -154,10 +146,20 @@ public class SiteCrawler {
             }
         } catch (IOException e) {
             System.err.println("Ошибка обработки URL: " + url + ". Причина: " + e.getMessage());
+            saveSiteError(site, "Ошибка обработки URL: " + e.getMessage());
         }
     }
 
+    public void saveSiteError(Site site, String errorMessage) {
+        if (errorMessage.length() > 255) {
+            errorMessage = errorMessage.substring(0, 255);
+        }
+        site.setLastError(errorMessage);
+        siteRepository.save(site);
+    }
 
+
+    @Transactional
     public void indexPageBatch(Page page) {
         Set<Lemma> lemmas = extractLemmasFromContent(page.getContent(), page.getSite());
 
@@ -178,11 +180,23 @@ public class SiteCrawler {
         }
     }
 
+    private String extractTitle(Document document) {
+        String title = document.title();
+        if (title == null || title.isEmpty()) {
+            Element h1 = document.selectFirst("h1");
+            if (h1 != null) {
+                title = h1.text();
+            } else {
+                title = "Без названия";
+            }
+        }
+        return title.length() > 50 ? title.substring(0, 50) + "..." : title;
+    }
+
 
     private Set<Lemma> extractLemmasFromContent(String content, Site site) {
         Set<Lemma> lemmas = new HashSet<>();
         String[] words = content.split("\\s+");
-
         for (String word : words) {
             String lemmaText = word.toLowerCase();
             if (lemmaText.length() > 255) {
@@ -190,7 +204,6 @@ public class SiteCrawler {
             }
             lemmas.add(new Lemma(lemmaText, site, 1));
         }
-
         return lemmas;
     }
 
@@ -209,12 +222,19 @@ public class SiteCrawler {
             String protocol = parsedUrl.getProtocol();
             String host = parsedUrl.getHost();
             String path = parsedUrl.getPath();
-
-            path = (path == null || path.equals("/")) ? "" : path;
-
-            return protocol + "://" + host + path;
+            return protocol + "://" + host + (path.isEmpty() ? "/" : path);
         } catch (MalformedURLException e) {
             return url;
+        }
+    }
+
+    private String getPathFromUrl(String url) {
+        try {
+            URL parsedUrl = new URL(url);
+            String path = parsedUrl.getPath();
+            return (path == null || path.isEmpty()) ? "/" : path;
+        } catch (MalformedURLException e) {
+            return "/";
         }
     }
 
@@ -227,13 +247,4 @@ public class SiteCrawler {
     private boolean isStopped() {
         return isStopped;
     }
-
-    public void saveSiteError(Site site, String errorMessage) {
-        if (errorMessage.length() > 255) {
-            errorMessage = errorMessage.substring(0, 255);
-        }
-        site.setLastError(errorMessage);
-        siteRepository.save(site);
-    }
-
 }

@@ -35,6 +35,8 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Query("SELECT l FROM Lemma l WHERE l.site = :site")
     List<Lemma> findBySite(@Param("site") Site site);
 
+    List<Lemma> findAllBySite(Site site);
+
 
 
 

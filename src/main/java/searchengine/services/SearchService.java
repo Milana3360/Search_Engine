@@ -1,5 +1,6 @@
 package searchengine.services;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,7 @@ import searchengine.repositories.PageRepository;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -100,36 +102,93 @@ public class SearchService {
 
     private String getTitleFromPageContent(String content) {
         if (content == null || content.trim().isEmpty()) {
-            return "No Title";
+            return "Без названия";
         }
+
         try {
             org.jsoup.nodes.Document doc = Jsoup.parse(content);
+
             String title = doc.title();
-            if (!title.isEmpty()) {
-                return title;
+
+            if (title == null || title.isEmpty()) {
+                Element h1 = doc.selectFirst("h1");
+                title = h1 != null ? h1.text() : null;
             }
+
+            if (title == null || title.isEmpty()) {
+                title = doc.body().text();
+                title = title.length() > 50 ? title.substring(0, 50) + "..." : title;
+            }
+
+            return title != null ? title.trim() : "Без названия";
         } catch (Exception ignored) {
+            return "Без названия";
         }
-        return content.length() > 50 ? content.substring(0, 50) + "..." : content;
     }
 
-    private String generateSnippet(String content, List<String> lemmas) {
+     private String generateSnippet(String content, List<String> lemmas) {
         if (content == null || content.trim().isEmpty()) {
             return "No content available";
         }
 
         String textContent = cleanHtml(content);
-        String snippet = textContent.length() > 200 ? textContent.substring(0, 200) : textContent;
 
-        if (snippet.length() < 50) {
-            snippet = textContent;
-        }
+        String normalizedContent = textContent.toLowerCase();
+
+        int bestMatchIndex = -1;
+        String matchedLemma = null;
+        Pattern pattern = null;
 
         for (String lemma : lemmas) {
-            snippet = snippet.replaceAll("(?i)(" + Pattern.quote(lemma) + ")", "<b>$1</b>");
+            String normalizedLemma = lemma.toLowerCase();
+            String regex = "\\b" + Pattern.quote(normalizedLemma) + "\\w*\\b";
+            pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(normalizedContent);
+
+            if (matcher.find()) {
+                int lemmaIndex = matcher.start();
+                if (bestMatchIndex == -1 || lemmaIndex < bestMatchIndex) {
+                    bestMatchIndex = lemmaIndex;
+                    matchedLemma = normalizedLemma;
+                }
+            }
         }
 
-        return snippet.isEmpty() ? "No content available" : snippet;
+        if (bestMatchIndex == -1) {
+            return "No relevant content found";
+        }
+
+        int snippetStart = Math.max(0, bestMatchIndex - 50);
+        int snippetEnd = Math.min(textContent.length(), bestMatchIndex + 150);
+        String snippet = textContent.substring(snippetStart, snippetEnd).trim();
+
+        StringBuilder highlightedSnippet = new StringBuilder(snippet);
+        String normalizedSnippet = snippet.toLowerCase();
+
+        for (String lemma : lemmas) {
+            String normalizedLemma = lemma.toLowerCase();
+            String regex = "\\b" + Pattern.quote(normalizedLemma) + "\\w*\\b";
+            pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(normalizedSnippet);
+
+            int offset = 0;
+            while (matcher.find()) {
+                String foundWord = snippet.substring(matcher.start(), matcher.end());
+                String replacement = "<b>" + foundWord + "</b>";
+
+                highlightedSnippet.replace(
+                        matcher.start() + offset,
+                        matcher.end() + offset,
+                        replacement
+                );
+
+                offset += replacement.length() - foundWord.length();
+            }
+
+            normalizedSnippet = highlightedSnippet.toString().toLowerCase();
+        }
+
+        return highlightedSnippet.toString();
     }
 
     private String cleanHtml(String content) {
